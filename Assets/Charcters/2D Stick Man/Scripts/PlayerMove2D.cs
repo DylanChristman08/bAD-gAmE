@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 namespace memstow
 {
@@ -30,13 +31,41 @@ namespace memstow
         public Animator animator;
         public AnimatorClipInfo[] currentClipInfo;
 
+        private InputSystem_Actions inputActions;
+        private bool jumpPressed = false;
+        private bool jumpReleased = false;
+        private bool attackPressed = false;
+        private bool attackReleased = false;
+        private bool sprintPressed = false;
+
+        void Start()
+        {
+            inputActions = new InputSystem_Actions();
+            inputActions.Player.Enable();
+
+            // Setup Jump callbacks
+            inputActions.Player.Jump.started += ctx => jumpPressed = true;
+            inputActions.Player.Jump.canceled += ctx => { jumpPressed = false; jumpReleased = true; };
+
+            // Setup Attack callbacks
+            inputActions.Player.Attack.started += ctx => attackPressed = true;
+            inputActions.Player.Attack.canceled += ctx => { attackPressed = false; attackReleased = true; };
+        }
+
+        void OnDestroy()
+        {
+            if (inputActions != null)
+            {
+                inputActions.Dispose();
+            }
+        }
 
         // Update is called once per frame
         void Update()
         {
             bool isGrounded = IsGrounded();
 
-            horizontal = Input.GetAxisRaw("Horizontal");  // returns -1, 0, 1  Depends on direction moving. -1=left, 0=none, 1=right (programmer's persective, not avatar's)
+            horizontal = inputActions.Player.Move.ReadValue<Vector2>().x;  // returns -1, 0, 1  Depends on direction moving. -1=left, 0=none, 1=right (programmer's persective, not avatar's)
 
             animator = gameObject.GetComponent<Animator>();
             currentClipInfo = animator.GetCurrentAnimatorClipInfo(0);
@@ -48,15 +77,17 @@ namespace memstow
 
 
             // Jump Update
-            if (Input.GetButtonDown("Jump") && isGrounded && permitJump)
+            if (jumpPressed && isGrounded && permitJump)
             {
                 rb.linearVelocity = new Vector2(rb.linearVelocity.x, jumpingPower);
                 animator.SetBool("doJumpUp", true);
+                jumpPressed = false;
             }
 
-            if (Input.GetButtonUp("Jump") && rb.linearVelocity.y > 0.0f)
+            if (jumpReleased && rb.linearVelocity.y > 0.0f)
             {
                 rb.linearVelocity = new Vector2(rb.linearVelocity.x, rb.linearVelocity.y * 0.5f);
+                jumpReleased = false;
             }
 
             if (!(Input.GetButtonUp("Jump")) && rb.linearVelocity.y == 0.0f)
@@ -106,7 +137,7 @@ namespace memstow
             }
 
             // Attack Updating
-            if (Input.GetButtonDown("Fire1"))
+            if (attackPressed)
             {
 
                 if ((rb.linearVelocity.x != 0) || (rb.linearVelocity.x == 0f && (rb.linearVelocity.y != 0f)))
@@ -119,12 +150,14 @@ namespace memstow
                     animator.SetBool("doSpecial", false);
                     animator.SetBool("doAttack", true);
                 }
+                attackPressed = false;
             }
             //else
-            if (Input.GetButtonUp("Fire1"))
+            if (attackReleased)
             {
                 animator.SetBool("doSpecial", false);
                 animator.SetBool("doAttack", false);
+                attackReleased = false;
             }
 
             Flip();
@@ -132,10 +165,12 @@ namespace memstow
 
         private void FixedUpdate()
         {
+            sprintPressed = inputActions.Player.Sprint.IsPressed();
+
             if (permitRunWalk) // if permitted to run or walk, then update velicity
             {
                 // Check if the button for running is pressed
-                if (Input.GetKey(KeyCode.LeftShift))
+                if (sprintPressed)
                 {
                     rb.linearVelocity = new Vector2(horizontal * speedWalk * speedRunFactor, rb.linearVelocity.y);
                 }
